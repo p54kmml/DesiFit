@@ -1,11 +1,15 @@
 import os
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+from sqlalchemy import inspect, text
+
+logger = logging.getLogger("desifit.migrations")
 
 import backend.models
-from backend.database import engine, Base, SessionLocal
+from backend.database import engine, Base, SessionLocal, sync_postgres_sequences
 from backend.services.seed_data import seed_database_if_empty
 from backend.routers import (
     auth,
@@ -21,35 +25,55 @@ from backend.routers import (
 load_dotenv()
 
 
-def safe_migrate_db():
-    """Ensures safe schema migrations without dropping any existing user data."""
-    Base.metadata.create_all(bind=engine)
-    with engine.connect() as conn:
-        try:
-            # Check if is_onboarded column exists in user_profiles
-            cur = conn.connection.cursor()
-            cur.execute("PRAGMA table_info(user_profiles);")
-            cols = [r[1] for r in cur.fetchall()]
-            if "is_onboarded" not in cols:
-                cur.execute("ALTER TABLE user_profiles ADD COLUMN is_onboarded BOOLEAN DEFAULT 0;")
-                # Preserve existing accounts by marking them as already onboarded
-                cur.execute("UPDATE user_profiles SET is_onboarded = 1;")
-                conn.connection.commit()
-            if "workout_frequency_days" not in cols:
-                cur.execute("ALTER TABLE user_profiles ADD COLUMN workout_frequency_days INTEGER;")
-                conn.connection.commit()
-            if "preferred_split" not in cols:
-                cur.execute("ALTER TABLE user_profiles ADD COLUMN preferred_split VARCHAR(150);")
-                conn.connection.commit()
-            if "custom_split_details" not in cols:
-                cur.execute("ALTER TABLE user_profiles ADD COLUMN custom_split_details TEXT;")
-                conn.connection.commit()
-        except Exception as e:
-            print(f"[DB MIGRATION NOTICE] {e}")
+def safe_migrate_db(target_engine=None):
+    """
+    Ensures safe schema migrations across both SQLite and PostgreSQL without dropping data.
+    Inspects existing columns dynamically and adds missing columns with dialect-appropriate defaults.
+    Raises RuntimeError on failure to prevent the application from starting with an incomplete schema.
+    """
+    eng = target_engine or engine
+    try:
+        Base.metadata.create_all(bind=eng)
+        inspector = inspect(eng)
+        if "user_profiles" in inspector.get_table_names():
+            existing_cols = {col["name"] for col in inspector.get_columns("user_profiles")}
+            is_sqlite = eng.dialect.name == "sqlite"
+
+            with eng.connect() as conn:
+                if "is_onboarded" not in existing_cols:
+                    if is_sqlite:
+                        conn.execute(text("ALTER TABLE user_profiles ADD COLUMN is_onboarded BOOLEAN DEFAULT 0;"))
+                        conn.execute(text("UPDATE user_profiles SET is_onboarded = 1;"))
+                    else:
+                        conn.execute(text("ALTER TABLE user_profiles ADD COLUMN is_onboarded BOOLEAN DEFAULT FALSE;"))
+                        conn.execute(text("UPDATE user_profiles SET is_onboarded = TRUE;"))
+                    conn.commit()
+                    logger.info("Added missing column 'is_onboarded' to user_profiles on %s", eng.dialect.name)
+
+                if "workout_frequency_days" not in existing_cols:
+                    conn.execute(text("ALTER TABLE user_profiles ADD COLUMN workout_frequency_days INTEGER;"))
+                    conn.commit()
+                    logger.info("Added missing column 'workout_frequency_days' to user_profiles on %s", eng.dialect.name)
+
+                if "preferred_split" not in existing_cols:
+                    conn.execute(text("ALTER TABLE user_profiles ADD COLUMN preferred_split VARCHAR(150);"))
+                    conn.commit()
+                    logger.info("Added missing column 'preferred_split' to user_profiles on %s", eng.dialect.name)
+
+                if "custom_split_details" not in existing_cols:
+                    conn.execute(text("ALTER TABLE user_profiles ADD COLUMN custom_split_details TEXT;"))
+                    conn.commit()
+                    logger.info("Added missing column 'custom_split_details' to user_profiles on %s", eng.dialect.name)
+    except Exception as e:
+        logger.error("Database migration error on %s: %s", eng.dialect.name, e, exc_info=True)
+        raise RuntimeError(f"Database migration failed on {eng.dialect.name}: {e}") from e
 
 
-def init_db():
-    safe_migrate_db()
+def init_db(target_engine=None):
+    eng = target_engine or engine
+    safe_migrate_db(eng)
+    if eng.dialect.name == "postgresql":
+        sync_postgres_sequences(eng)
     db = SessionLocal()
     try:
         seed_database_if_empty(db)

@@ -1,3 +1,6 @@
+import os
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event
@@ -62,6 +65,9 @@ def cleanup_tables():
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
+    import backend.main
+    backend.main.engine = engine
+    backend.main.SessionLocal = TestingSessionLocal
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
     seed_database_if_empty(db)
