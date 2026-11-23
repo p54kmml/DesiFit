@@ -38,9 +38,31 @@ class UserResponse(BaseModel):
     username: str
     full_name: str
     is_active: bool
+    is_verified: Optional[bool] = False
+    verification_email_sent: Optional[bool] = None
+    dev_verification_token: Optional[str] = None
     created_at: py_datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str = Field(..., min_length=10)
+
+
+class VerifyEmailResponse(BaseModel):
+    verified: bool
+    message: str
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
+
+
+class ResendVerificationResponse(BaseModel):
+    message: str
+    email_sent: bool = False
+    dev_token: Optional[str] = None
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -189,7 +211,15 @@ class WorkoutPlanCreate(BaseModel):
     description: Optional[str] = None
     goal: Optional[str] = None
     difficulty: Optional[str] = None
-    exercises: List[WorkoutPlanExerciseCreate] = []
+    exercises: List[WorkoutPlanExerciseCreate] = Field(default_factory=list, max_length=50)
+
+
+class WorkoutPlanUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    goal: Optional[str] = None
+    difficulty: Optional[str] = None
+    exercises: Optional[List[WorkoutPlanExerciseCreate]] = Field(default=None, max_length=50)
 
 
 class WorkoutPlanResponse(BaseModel):
@@ -236,7 +266,7 @@ class WorkoutLogCreate(BaseModel):
     duration_minutes: int = 45
     date: Optional[py_date] = None
     completed: bool = True
-    logged_exercises: List[WorkoutLogExerciseCreate] = []
+    logged_exercises: List[WorkoutLogExerciseCreate] = Field(default_factory=list, max_length=50)
 
 
 class WorkoutLogResponse(BaseModel):

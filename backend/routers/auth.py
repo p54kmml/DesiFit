@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
-from backend.models import User, UserProfile, PasswordResetToken, utcnow
+from backend.models import User, UserProfile, PasswordResetToken, AccountVerificationToken, utcnow
 from backend.schemas import (
     UserCreate,
     UserLogin,
@@ -14,7 +14,11 @@ from backend.schemas import (
     ForgotPasswordRequest,
     ForgotPasswordResponse,
     ResetPasswordRequest,
-    VerifyResetTokenResponse
+    VerifyResetTokenResponse,
+    VerifyEmailRequest,
+    VerifyEmailResponse,
+    ResendVerificationRequest,
+    ResendVerificationResponse
 )
 from backend.auth import (
     hash_password,
@@ -27,8 +31,10 @@ from backend.auth import (
 from backend.security.rate_limiter import ip_rate_limiter, email_rate_limiter
 from backend.services.email_service import (
     send_password_reset_email,
+    send_account_verification_email,
     is_email_configured,
-    get_frontend_url
+    get_frontend_url,
+    is_production
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -53,7 +59,8 @@ def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
         email=user_in.email,
         username=user_in.username,
         full_name=user_in.full_name,
-        hashed_password=hashed_pw
+        hashed_password=hashed_pw,
+        is_verified=False
     )
     db.add(user)
     db.flush()
@@ -64,8 +71,42 @@ def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
         is_onboarded=False
     )
     db.add(profile)
+
+    # Generate secure, single-use account verification token (24-hour expiry)
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hash_reset_token(raw_token)
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(hours=24)
+
+    verification_record = AccountVerificationToken(
+        user_id=user.id,
+        token_hash=token_hash,
+        expires_at=expires_at,
+        used=False
+    )
+    db.add(verification_record)
     db.commit()
     db.refresh(user)
+
+    # Dispatch account verification email via Resend (primary) or SMTP
+    email_sent = False
+    if is_email_configured():
+        email_sent = send_account_verification_email(
+            to_email=user.email,
+            verification_token=raw_token,
+            full_name=user.full_name
+        )
+
+    user.verification_email_sent = email_sent
+
+    # Development-only fallback: never expose in production or when email provider is configured
+    is_prod = is_production()
+    email_configured = is_email_configured()
+    if not is_prod and not email_configured and not email_sent:
+        user.dev_verification_token = raw_token
+    else:
+        user.dev_verification_token = None
+
     return user
 
 
@@ -143,7 +184,7 @@ def forgot_password(
     user = db.query(User).filter(User.email.ilike(normalized_email)).first()
 
     now = datetime.now(timezone.utc)
-    is_prod = os.getenv("ENVIRONMENT", "").lower() in ["production", "prod"]
+    is_prod = is_production()
     email_configured = is_email_configured()
 
     if user and user.is_active:
@@ -171,10 +212,12 @@ def forgot_password(
         if email_configured:
             email_sent = send_password_reset_email(to_email=user.email, reset_token=raw_token)
 
-        # In development without SMTP, return dev reset link for testing
+        # STRICT PRODUCTION SECURITY:
+        # Never expose tokens or dev links in production environments, when email is configured, or in API responses.
+        # Fallback dev tokens are ONLY permissible in strictly local development when email is genuinely unconfigured.
         dev_link = None
         dev_tok = None
-        if not is_prod and not email_configured:
+        if not is_prod and not email_configured and not email_sent:
             frontend_url = get_frontend_url()
             dev_link = f"{frontend_url}/?token={raw_token}"
             dev_tok = raw_token
@@ -303,3 +346,148 @@ def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
     db.commit()
 
     return {"message": "Password has been successfully reset. You can now log in with your new password."}
+
+
+@router.post("/verify-email", response_model=VerifyEmailResponse)
+def verify_email(req: VerifyEmailRequest, db: Session = Depends(get_db)):
+    """
+    Verifies a user's account using a secure, single-use verification token:
+    - Token must not be expired (24 hours).
+    - Token must not have been used previously (single-use).
+    - Upon verification, sets user.is_verified = True and invalidates active tokens.
+    """
+    if not req.token or len(req.token.strip()) < 10:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification token format."
+        )
+
+    token_hash = hash_reset_token(req.token)
+    record = db.query(AccountVerificationToken).filter(
+        AccountVerificationToken.token_hash == token_hash
+    ).first()
+
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or unrecognized verification token."
+        )
+
+    if record.used:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This verification token has already been used."
+        )
+
+    now = datetime.now(timezone.utc)
+    expires_at = record.expires_at if record.expires_at.tzinfo else record.expires_at.replace(tzinfo=timezone.utc)
+    if now > expires_at:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This verification token has expired."
+        )
+
+    user = db.query(User).filter(User.id == record.user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User account associated with this token was not found."
+        )
+
+    record.used = True
+    record.used_at = now
+    user.is_verified = True
+
+    # Invalidate any other active verification tokens for this user
+    db.query(AccountVerificationToken).filter(
+        AccountVerificationToken.user_id == user.id,
+        AccountVerificationToken.used == False
+    ).update({"used": True, "used_at": now})
+
+    db.commit()
+    return VerifyEmailResponse(
+        verified=True,
+        message="Email successfully verified. Your DesiFit account is active."
+    )
+
+
+@router.post("/resend-verification", response_model=ResendVerificationResponse)
+def resend_verification(
+    req: ResendVerificationRequest,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Resends an account verification email:
+    - Rate-limited by IP and email.
+    - Generates a fresh 24-hour token and invalidates previous unused tokens.
+    - Sends via Resend / SMTP.
+    """
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        client_ip = forwarded.split(",")[0].strip()
+    elif request.client and request.client.host:
+        client_ip = request.client.host
+    else:
+        client_ip = "127.0.0.1"
+
+    if not ip_rate_limiter.is_allowed(client_ip):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests from this IP address. Please wait."
+        )
+
+    if not email_rate_limiter.is_allowed(req.email):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many verification requests for this email address. Please wait."
+        )
+
+    normalized_email = req.email.strip().lower()
+    user = db.query(User).filter(User.email.ilike(normalized_email)).first()
+    now = datetime.now(timezone.utc)
+    is_prod = is_production()
+
+    if user and not user.is_verified:
+        # Invalidate existing unused verification tokens
+        db.query(AccountVerificationToken).filter(
+            AccountVerificationToken.user_id == user.id,
+            AccountVerificationToken.used == False
+        ).update({"used": True, "used_at": now})
+
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hash_reset_token(raw_token)
+        expires_at = now + timedelta(hours=24)
+
+        token_record = AccountVerificationToken(
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=expires_at,
+            used=False
+        )
+        db.add(token_record)
+        db.commit()
+
+        email_sent = False
+        if is_email_configured():
+            email_sent = send_account_verification_email(
+                to_email=user.email,
+                verification_token=raw_token,
+                full_name=user.full_name
+            )
+
+        email_configured = is_email_configured()
+        dev_token = raw_token if (not is_prod and not email_configured and not email_sent) else None
+        return ResendVerificationResponse(
+            message="If an unverified account exists for this email, a verification link has been sent.",
+            email_sent=email_sent,
+            dev_token=dev_token
+        )
+    else:
+        # Constant time dummy operation
+        _ = hash_reset_token(secrets.token_urlsafe(32))
+        return ResendVerificationResponse(
+            message="If an unverified account exists for this email, a verification link has been sent.",
+            email_sent=False,
+            dev_token=None
+        )

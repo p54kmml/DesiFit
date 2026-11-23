@@ -211,6 +211,256 @@ INITIAL_EXERCISES = [
         "equipment": "Bodyweight & Mat",
         "difficulty": "Beginner",
         "instructions": "Rest on forearms and toes. Keep spine neutral, glutes clamped tight, and belly button pulled toward spine. Breathe steadily and hold without sagging."
+    },
+
+    # ADDITIONAL CHEST & DESI FITNESS
+    {
+        "name": "Incline Barbell Bench Press",
+        "muscle_group": "Chest",
+        "equipment": "Barbell & Incline Bench",
+        "difficulty": "Intermediate",
+        "instructions": "Set bench to 30-45 degrees. Lower bar to upper chest and press up with control."
+    },
+    {
+        "name": "Decline Dumbbell Press",
+        "muscle_group": "Chest",
+        "equipment": "Dumbbells & Decline Bench",
+        "difficulty": "Intermediate",
+        "instructions": "Lie on decline bench. Press dumbbells upward over lower chest."
+    },
+    {
+        "name": "Dumbbell Pullover",
+        "muscle_group": "Chest",
+        "equipment": "Dumbbell & Flat Bench",
+        "difficulty": "Intermediate",
+        "instructions": "Lie across bench with shoulders supported. Lower dumbbell back overhead for a deep chest and serratus stretch."
+    },
+    {
+        "name": "Diamond Push-Ups",
+        "muscle_group": "Chest",
+        "equipment": "Bodyweight",
+        "difficulty": "Intermediate",
+        "instructions": "Form diamond shape with thumbs and index fingers under chest. Lower down and press up."
+    },
+    {
+        "name": "Desi Dand (Hindu Push-Ups)",
+        "muscle_group": "Chest",
+        "equipment": "Bodyweight",
+        "difficulty": "Intermediate",
+        "instructions": "Traditional Indian akhada exercise. Start in downward dog, swoop chest down close to the floor, arch into cobra, and reverse smoothly."
+    },
+
+    # ADDITIONAL BACK
+    {
+        "name": "Wide-Grip Pull-Ups",
+        "muscle_group": "Back",
+        "equipment": "Pull-Up Bar",
+        "difficulty": "Advanced",
+        "instructions": "Overhand grip wider than shoulders. Pull up until chin clears the bar."
+    },
+    {
+        "name": "Underhand Chin-Ups",
+        "muscle_group": "Back",
+        "equipment": "Pull-Up Bar",
+        "difficulty": "Intermediate",
+        "instructions": "Underhand grip at shoulder width. Pull up emphasizing lower lats and biceps."
+    },
+    {
+        "name": "T-Bar Row",
+        "muscle_group": "Back",
+        "equipment": "T-Bar Platform or Landmine",
+        "difficulty": "Intermediate",
+        "instructions": "Straddle the bar, hinge hips, keep back flat and pull handle toward upper abs."
+    },
+    {
+        "name": "Hyperextensions (Back Extension)",
+        "muscle_group": "Back",
+        "equipment": "Hyperextension Bench",
+        "difficulty": "Beginner",
+        "instructions": "Hinge at the waist on the 45-degree bench. Raise torso until aligned with legs."
+    },
+    {
+        "name": "Straight-Arm Cable Pulldown",
+        "muscle_group": "Back",
+        "equipment": "Cable Machine",
+        "difficulty": "Beginner",
+        "instructions": "With arms straight, sweep cable bar from shoulder height down to thighs."
+    },
+
+    # ADDITIONAL SHOULDERS
+    {
+        "name": "Arnold Dumbbell Press",
+        "muscle_group": "Shoulders",
+        "equipment": "Dumbbells",
+        "difficulty": "Intermediate",
+        "instructions": "Start with palms facing you. Rotate palms outward as you press overhead."
+    },
+    {
+        "name": "Dumbbell Shrugs",
+        "muscle_group": "Shoulders",
+        "equipment": "Dumbbells",
+        "difficulty": "Beginner",
+        "instructions": "Elevate shoulders straight up towards ears, squeeze traps for 1 second, and lower smoothly."
+    },
+    {
+        "name": "Front Dumbbell Raise",
+        "muscle_group": "Shoulders",
+        "equipment": "Dumbbells",
+        "difficulty": "Beginner",
+        "instructions": "Raise dumbbells in front to shoulder level with controlled tempo."
+    },
+    {
+        "name": "Reverse Pec Deck Fly",
+        "muscle_group": "Shoulders",
+        "equipment": "Pec Deck Machine",
+        "difficulty": "Beginner",
+        "instructions": "Sit facing machine pad. Pull handles back horizontally to isolate rear deltoids."
+    },
+    {
+        "name": "Cable Lateral Raise",
+        "muscle_group": "Shoulders",
+        "equipment": "Cable Machine",
+        "difficulty": "Beginner",
+        "instructions": "Attach low cable to far hand. Raise arm out to side to keep constant deltoid tension."
+    },
+
+    # ADDITIONAL ARMS
+    {
+        "name": "Preacher Curl",
+        "muscle_group": "Biceps",
+        "equipment": "EZ Bar & Preacher Bench",
+        "difficulty": "Beginner",
+        "instructions": "Rest upper arms on preacher pad. Curl bar smoothly without lifting elbows."
+    },
+    {
+        "name": "Concentration Curl",
+        "muscle_group": "Biceps",
+        "equipment": "Dumbbell",
+        "difficulty": "Beginner",
+        "instructions": "Sit with elbow pressed against inner thigh. Curl dumbbell focusing on bicep peak."
+    },
+    {
+        "name": "Cable Bicep Curl",
+        "muscle_group": "Biceps",
+        "equipment": "Cable Machine",
+        "difficulty": "Beginner",
+        "instructions": "Stand facing low pulley with straight bar. Curl up against smooth cable resistance."
+    },
+    {
+        "name": "Reverse Barbell Curl",
+        "muscle_group": "Biceps",
+        "equipment": "Barbell",
+        "difficulty": "Intermediate",
+        "instructions": "Overhand grip. Curl weight to build brachioradialis and forearm thickness."
+    },
+    {
+        "name": "Close-Grip Barbell Bench Press",
+        "muscle_group": "Triceps",
+        "equipment": "Barbell & Flat Bench",
+        "difficulty": "Intermediate",
+        "instructions": "Grip bar shoulder-width. Keep elbows tucked close to ribs to recruit triceps."
+    },
+    {
+        "name": "Bench Dips",
+        "muscle_group": "Triceps",
+        "equipment": "Flat Bench",
+        "difficulty": "Beginner",
+        "instructions": "Hands on edge of bench behind you. Lower hips by bending elbows to 90 degrees."
+    },
+    {
+        "name": "Cable Overhead Tricep Extension",
+        "muscle_group": "Triceps",
+        "equipment": "Cable Machine & Rope",
+        "difficulty": "Beginner",
+        "instructions": "Face away from high cable. Extend rope overhead to stretch and squeeze triceps long head."
+    },
+
+    # ADDITIONAL LEGS
+    {
+        "name": "Front Squat",
+        "muscle_group": "Legs",
+        "equipment": "Barbell & Rack",
+        "difficulty": "Advanced",
+        "instructions": "Rest bar across front deltoids. Keep elbows high and squat deep with upright torso."
+    },
+    {
+        "name": "Goblet Squat",
+        "muscle_group": "Legs",
+        "equipment": "Dumbbell or Kettlebell",
+        "difficulty": "Beginner",
+        "instructions": "Hold weight vertically against chest. Squat between knees keeping chest proud."
+    },
+    {
+        "name": "Bulgarian Split Squat",
+        "muscle_group": "Legs",
+        "equipment": "Dumbbells & Bench",
+        "difficulty": "Intermediate",
+        "instructions": "Rear foot elevated on bench. Lower hips until front thigh is parallel to floor."
+    },
+    {
+        "name": "Leg Extension",
+        "muscle_group": "Legs",
+        "equipment": "Leg Extension Machine",
+        "difficulty": "Beginner",
+        "instructions": "Extend knees fully against pad to isolate quadriceps. Pause at the top."
+    },
+    {
+        "name": "Lying Hamstring Leg Curl",
+        "muscle_group": "Legs",
+        "equipment": "Leg Curl Machine",
+        "difficulty": "Beginner",
+        "instructions": "Lie face down. Curl heels toward glutes to isolate hamstrings."
+    },
+    {
+        "name": "Barbell Hip Thrust",
+        "muscle_group": "Legs",
+        "equipment": "Barbell & Bench",
+        "difficulty": "Intermediate",
+        "instructions": "Upper back against bench, bar across hips. Drive hips up into full extension."
+    },
+    {
+        "name": "Seated Calf Raise",
+        "muscle_group": "Legs",
+        "equipment": "Seated Calf Machine",
+        "difficulty": "Beginner",
+        "instructions": "Knees bent under pad. Push through toes to isolate the soleus muscle."
+    },
+    {
+        "name": "Desi Baithak (Hindu Squats)",
+        "muscle_group": "Legs",
+        "equipment": "Bodyweight",
+        "difficulty": "Beginner",
+        "instructions": "Traditional akhada bodyweight squat with rhythmic arm swings, rising onto balls of feet."
+    },
+
+    # ADDITIONAL ABS & FULL BODY
+    {
+        "name": "Surya Namaskar (Sun Salutation)",
+        "muscle_group": "Full Body",
+        "equipment": "Bodyweight & Mat",
+        "difficulty": "Beginner",
+        "instructions": "Dynamic 12-step traditional yogic flow activating full body flexibility and core endurance."
+    },
+    {
+        "name": "Ab Wheel Rollout",
+        "muscle_group": "Abs",
+        "equipment": "Ab Wheel",
+        "difficulty": "Advanced",
+        "instructions": "Kneel on mat and roll wheel forward with straight arms, bracing core, then roll back."
+    },
+    {
+        "name": "Russian Twists",
+        "muscle_group": "Abs",
+        "equipment": "Bodyweight or Dumbbell",
+        "difficulty": "Beginner",
+        "instructions": "Sit with knees bent, lean back 45 degrees, and rotate torso side-to-side."
+    },
+    {
+        "name": "Bicycle Crunches",
+        "muscle_group": "Abs",
+        "equipment": "Bodyweight & Mat",
+        "difficulty": "Beginner",
+        "instructions": "Alternate touching opposite elbow to knee in a pedaling motion to target obliques."
     }
 ]
 
@@ -393,13 +643,12 @@ INITIAL_FOODS = [
 
 
 def seed_database_if_empty(db: Session):
-    """Checks and seeds exercise and nutrition libraries if empty."""
-    exercise_count = db.query(Exercise).count()
-    if exercise_count == 0:
-        for ex_data in INITIAL_EXERCISES:
-            exercise = Exercise(**ex_data)
-            db.add(exercise)
-        db.commit()
+    """Checks and seeds exercise and nutrition libraries if empty or missing items."""
+    existing_exercises = {e.name for e in db.query(Exercise.name).all()}
+    for ex_data in INITIAL_EXERCISES:
+        if ex_data["name"] not in existing_exercises:
+            db.add(Exercise(**ex_data))
+    db.commit()
 
     food_count = db.query(FoodItem).count()
     if food_count == 0:

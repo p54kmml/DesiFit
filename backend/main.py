@@ -64,6 +64,20 @@ def safe_migrate_db(target_engine=None):
                     conn.execute(text("ALTER TABLE user_profiles ADD COLUMN custom_split_details TEXT;"))
                     conn.commit()
                     logger.info("Added missing column 'custom_split_details' to user_profiles on %s", eng.dialect.name)
+
+        if "users" in inspector.get_table_names():
+            user_cols = {col["name"] for col in inspector.get_columns("users")}
+            is_sqlite = eng.dialect.name == "sqlite"
+            with eng.connect() as conn:
+                if "is_verified" not in user_cols:
+                    if is_sqlite:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT 0;"))
+                        conn.execute(text("UPDATE users SET is_verified = 1;"))
+                    else:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT TRUE;"))
+                        conn.execute(text("UPDATE users SET is_verified = TRUE;"))
+                    conn.commit()
+                    logger.info("Added missing column 'is_verified' to users on %s", eng.dialect.name)
     except Exception as e:
         logger.error("Database migration error on %s: %s", eng.dialect.name, e, exc_info=True)
         raise RuntimeError(f"Database migration failed on {eng.dialect.name}: {e}") from e
@@ -97,11 +111,14 @@ app = FastAPI(
 )
 
 # CORS configuration
+cors_origins_env = os.getenv("CORS_ORIGINS", "")
+allowed_origins = [orig.strip() for orig in cors_origins_env.split(",") if orig.strip()]
+if not allowed_origins:
+    allowed_origins = ["http://localhost:8501", "http://127.0.0.1:8501"]
+
 app.add_middleware(
     CORSMiddleware,
-    # Streamlit's Python API client calls FastAPI server-to-server. Keep browser
-    # origins restricted to the local frontend instead of allowing every site.
-    allow_origins=["http://localhost:8501", "http://127.0.0.1:8501"],
+    allow_origins=allowed_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

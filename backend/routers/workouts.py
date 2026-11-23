@@ -15,6 +15,7 @@ from backend.models import (
 )
 from backend.schemas import (
     WorkoutPlanCreate,
+    WorkoutPlanUpdate,
     WorkoutPlanResponse,
     WorkoutLogCreate,
     WorkoutLogResponse
@@ -49,6 +50,11 @@ def create_workout_plan(
     db: Session = Depends(get_db)
 ):
     if plan_in.exercises:
+        if len(plan_in.exercises) > 50:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A workout plan can contain a maximum of 50 exercises."
+            )
         requested_exercise_ids = {item.exercise_id for item in plan_in.exercises}
         accessible_exercises = db.query(Exercise.id).filter(
             Exercise.id.in_(requested_exercise_ids),
@@ -98,6 +104,64 @@ def get_workout_plan(
     )
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workout plan not found")
+    return plan
+
+
+@router.put("/plans/{plan_id}", response_model=WorkoutPlanResponse)
+def update_workout_plan(
+    plan_id: int,
+    plan_in: WorkoutPlanUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    plan = (
+        db.query(WorkoutPlan)
+        .filter(WorkoutPlan.id == plan_id, WorkoutPlan.user_id == current_user.id)
+        .first()
+    )
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workout plan not found")
+
+    if plan_in.title is not None:
+        plan.title = plan_in.title
+    if plan_in.description is not None:
+        plan.description = plan_in.description
+    if plan_in.goal is not None:
+        plan.goal = plan_in.goal
+    if plan_in.difficulty is not None:
+        plan.difficulty = plan_in.difficulty
+
+    if plan_in.exercises is not None:
+        if len(plan_in.exercises) > 50:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A workout plan can contain a maximum of 50 exercises."
+            )
+        requested_exercise_ids = {item.exercise_id for item in plan_in.exercises}
+        if requested_exercise_ids:
+            accessible_exercises = db.query(Exercise.id).filter(
+                Exercise.id.in_(requested_exercise_ids),
+                or_(Exercise.is_custom == False, Exercise.created_by_user_id == current_user.id)
+            ).all()
+            accessible_ids = {row[0] for row in accessible_exercises}
+            if accessible_ids != requested_exercise_ids:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="One or more exercises were not found")
+
+        # Clear existing plan exercises and insert new ones
+        db.query(WorkoutPlanExercise).filter(WorkoutPlanExercise.workout_plan_id == plan.id).delete()
+        for item in plan_in.exercises:
+            plan_exercise = WorkoutPlanExercise(
+                workout_plan_id=plan.id,
+                exercise_id=item.exercise_id,
+                sets=item.sets,
+                reps=item.reps,
+                rest_seconds=item.rest_seconds,
+                order_index=item.order_index
+            )
+            db.add(plan_exercise)
+
+    db.commit()
+    db.refresh(plan)
     return plan
 
 
@@ -152,6 +216,11 @@ def record_workout_log(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workout plan not found")
 
     if log_in.logged_exercises:
+        if len(log_in.logged_exercises) > 50:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A workout log can contain a maximum of 50 exercises."
+            )
         requested_exercise_ids = {item.exercise_id for item in log_in.logged_exercises}
         accessible_exercises = db.query(Exercise.id).filter(
             Exercise.id.in_(requested_exercise_ids),

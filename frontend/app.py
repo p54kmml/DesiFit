@@ -101,7 +101,10 @@ else:
             )
 
             def on_nav_change():
-                st.session_state["nav_page"] = st.session_state["nav_radio"]
+                selected_page = st.session_state["nav_radio"]
+                st.session_state["nav_page"] = selected_page
+                if selected_page == "Workout Planner":
+                    st.session_state["workout_active_tab"] = "📋 Workout Planner"
 
             # Synchronize widget state before radio is instantiated if changed programmatically
             if "nav_radio" not in st.session_state or st.session_state["nav_radio"] != st.session_state.get("nav_page", "Dashboard"):

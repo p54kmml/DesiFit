@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BASE_URL = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000").rstrip("/")
+if BASE_URL and not BASE_URL.startswith("http://") and not BASE_URL.startswith("https://"):
+    BASE_URL = f"https://{BASE_URL}"
 API_PREFIX = f"{BASE_URL}/api/v1"
 
 
@@ -75,6 +77,16 @@ class DesiFitAPIClient:
         }, headers=self._headers(), timeout=10)
         return self._handle_response(res)
 
+    def verify_email(self, token: str) -> Dict[str, Any]:
+        url = f"{API_PREFIX}/auth/verify-email"
+        res = requests.post(url, json={"token": token}, headers=self._headers(), timeout=10)
+        return self._handle_response(res)
+
+    def resend_verification(self, email: str) -> Dict[str, Any]:
+        url = f"{API_PREFIX}/auth/resend-verification"
+        res = requests.post(url, json={"email": email}, headers=self._headers(), timeout=10)
+        return self._handle_response(res)
+
     # ================= PROFILE & ONBOARDING =================
     def get_profile(self) -> Dict[str, Any]:
         url = f"{API_PREFIX}/profile"
@@ -122,6 +134,16 @@ class DesiFitAPIClient:
     def create_workout_plan(self, plan_data: Dict[str, Any]) -> Dict[str, Any]:
         url = f"{API_PREFIX}/workouts/plans"
         res = requests.post(url, json=plan_data, headers=self._headers(), timeout=10)
+        return self._handle_response(res)
+
+    def get_workout_plan(self, plan_id: int) -> Dict[str, Any]:
+        url = f"{API_PREFIX}/workouts/plans/{plan_id}"
+        res = requests.get(url, headers=self._headers(), timeout=10)
+        return self._handle_response(res)
+
+    def update_workout_plan(self, plan_id: int, plan_data: Dict[str, Any]) -> Dict[str, Any]:
+        url = f"{API_PREFIX}/workouts/plans/{plan_id}"
+        res = requests.put(url, json=plan_data, headers=self._headers(), timeout=10)
         return self._handle_response(res)
 
     def delete_workout_plan(self, plan_id: int) -> bool:

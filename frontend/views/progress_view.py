@@ -25,12 +25,16 @@ def render_progress_page(api: DesiFitAPIClient):
     tab_charts, tab_log, tab_history = st.tabs(["📊 Progress Charts", "✍️ Record Measurements", "📋 History Log"])
 
     # Fetch measurements
+    measurements = []
+    profile = {}
+    target_wt = 68.0
     try:
         measurements = api.get_measurements(limit=50)
-        profile = api.get_profile()
+        profile = api.get_profile() or {}
         target_wt = profile.get("target_weight_kg", 68.0)
     except Exception as e:
         measurements = []
+        profile = {}
         target_wt = 68.0
         st.error(f"Error loading body measurements: {str(e)}")
 

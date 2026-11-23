@@ -27,6 +27,7 @@ class User(Base):
     full_name = Column(String(255), nullable=False)
     hashed_password = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=True)
+    is_verified = Column(Boolean, default=False, nullable=True)
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
@@ -38,6 +39,7 @@ class User(Base):
     body_measurements = relationship("BodyMeasurement", back_populates="user", cascade="all, delete-orphan")
     ai_conversations = relationship("AIConversation", back_populates="user", cascade="all, delete-orphan")
     password_reset_tokens = relationship("PasswordResetToken", back_populates="user", cascade="all, delete-orphan")
+    verification_tokens = relationship("AccountVerificationToken", back_populates="user", cascade="all, delete-orphan")
 
 
 class UserProfile(Base):
@@ -233,3 +235,17 @@ class PasswordResetToken(Base):
     created_at = Column(DateTime, default=utcnow, nullable=False)
 
     user = relationship("User", back_populates="password_reset_tokens")
+
+
+class AccountVerificationToken(Base):
+    __tablename__ = "account_verification_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    token_hash = Column(String(64), unique=True, index=True, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    used = Column(Boolean, default=False, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+
+    user = relationship("User", back_populates="verification_tokens")

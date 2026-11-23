@@ -1,9 +1,27 @@
+import os
 import streamlit as st
 from frontend.api_client import DesiFitAPIClient
 from frontend.styles import render_logo
 
 
-def set_auth_view(view: str, token: str = None):
+def is_production() -> bool:
+    """Detects whether frontend is operating in a production or deployed cloud environment."""
+    env = os.getenv("ENVIRONMENT", "").strip().lower()
+    if env in ("production", "prod", "staging"):
+        return True
+    if os.getenv("ENV", "").strip().lower() in ("production", "prod", "staging"):
+        return True
+    if os.getenv("RENDER", "").strip().lower() == "true":
+        return True
+    if bool(os.getenv("RENDER_SERVICE_ID", "").strip()):
+        return True
+    backend_url = os.getenv("BACKEND_API_URL", "").lower()
+    if "onrender.com" in backend_url or "streamlit.app" in backend_url:
+        return True
+    return False
+
+
+def set_auth_view(view: str, token: str = None, verify_token: str = None):
     """Safely updates auth navigation state and synchronizes query parameters."""
     st.session_state["auth_view"] = view
     if token:
@@ -12,6 +30,15 @@ def set_auth_view(view: str, token: str = None):
     elif "token" in st.query_params and view != "reset_password":
         try:
             del st.query_params["token"]
+        except Exception:
+            pass
+
+    if verify_token:
+        st.session_state["verify_token"] = verify_token
+        st.query_params["verify_token"] = verify_token
+    elif "verify_token" in st.query_params and view != "verify_email":
+        try:
+            del st.query_params["verify_token"]
         except Exception:
             pass
 
@@ -51,8 +78,8 @@ def render_forgot_password_view(api: DesiFitAPIClient):
         res = st.session_state["forgot_response"]
         st.success(res.get("message", "If this email is registered, a password reset link has been sent."))
 
-        # Display dev token helper box when running in development mode
-        if res.get("dev_token"):
+        # Display dev token helper box ONLY when strictly running in local development mode
+        if not is_production() and res.get("dev_token"):
             dev_tok = res.get("dev_token")
             st.markdown(
                 f"""
@@ -74,7 +101,7 @@ def render_forgot_password_view(api: DesiFitAPIClient):
                 set_auth_view("reset_password", token=dev_tok)
                 st.rerun()
 
-        elif res.get("dev_note"):
+        elif not is_production() and res.get("dev_note"):
             # Inform developer if email was not found in database during development
             st.markdown(
                 f"""
@@ -250,16 +277,69 @@ def render_reset_password_view(api: DesiFitAPIClient):
             st.rerun()
 
 
+def render_verify_email_view(api: DesiFitAPIClient):
+    """Renders the account email verification screen."""
+    st.subheader("Account Verification")
+    token = st.session_state.get("verify_token") or st.query_params.get("verify_token")
+    if not token:
+        st.error("No verification token was provided.")
+        if st.button("⬅️ Back to Login", use_container_width=True, type="secondary", key="btn_back_no_verify_token"):
+            set_auth_view("login")
+            st.rerun()
+        return
+
+    if "verification_result" not in st.session_state:
+        try:
+            res = api.verify_email(token)
+            st.session_state["verification_result"] = {
+                "success": True,
+                "message": res.get("message", "Email successfully verified!")
+            }
+        except Exception as e:
+            st.session_state["verification_result"] = {
+                "success": False,
+                "message": str(e)
+            }
+
+    result = st.session_state["verification_result"]
+    if result["success"]:
+        st.success(f"🎉 {result['message']}")
+        st.markdown(
+            """
+            <p style="color: #c9d1d9; font-size: 0.9rem; margin: 15px 0;">
+                Your DesiFit account has been verified. You can now sign in with your credentials.
+            </p>
+            """,
+            unsafe_allow_html=True
+        )
+        if st.button("👉 Sign In to DesiFit", use_container_width=True, key="btn_signin_after_verify"):
+            st.session_state.pop("verification_result", None)
+            st.session_state.pop("verify_token", None)
+            set_auth_view("login")
+            st.rerun()
+    else:
+        st.error(f"Verification Failed: {result['message']}")
+        if st.button("⬅️ Back to Login", use_container_width=True, type="secondary", key="btn_back_verify_fail"):
+            st.session_state.pop("verification_result", None)
+            st.session_state.pop("verify_token", None)
+            set_auth_view("login")
+            st.rerun()
+
+
 def render_auth_page(api: DesiFitAPIClient):
     # Synchronize initial auth_view from query params on first load
     if "auth_view" not in st.session_state:
         query_token = st.query_params.get("token")
+        query_verify_token = st.query_params.get("verify_token")
         query_view = st.query_params.get("view")
 
         if query_token:
             st.session_state["auth_view"] = "reset_password"
             st.session_state["reset_token"] = query_token
-        elif query_view in ["forgot_password", "enter_token", "reset_password", "login"]:
+        elif query_verify_token:
+            st.session_state["auth_view"] = "verify_email"
+            st.session_state["verify_token"] = query_verify_token
+        elif query_view in ["forgot_password", "enter_token", "reset_password", "verify_email", "login"]:
             st.session_state["auth_view"] = query_view
         else:
             st.session_state["auth_view"] = "login"
@@ -293,7 +373,11 @@ def render_auth_page(api: DesiFitAPIClient):
         elif current_view == "reset_password":
             render_reset_password_view(api)
 
-        # View 4: Default Login / Registration Tabs
+        # View 4: Account Verification
+        elif current_view == "verify_email":
+            render_verify_email_view(api)
+
+        # View 5: Default Login / Registration Tabs
         else:
             tab_login, tab_register = st.tabs(["⚡ Log In", "🚀 Create Account"])
 

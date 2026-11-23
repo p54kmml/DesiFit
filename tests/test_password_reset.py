@@ -9,6 +9,22 @@ from backend.models import User, PasswordResetToken
 from backend.auth import verify_password
 from backend.security.rate_limiter import reset_rate_limiters, email_rate_limiter, ip_rate_limiter
 from backend.services.email_service import is_email_configured, send_password_reset_email
+from tests.conftest import test_outbox
+
+
+def get_recovery_token(res, email: str = None) -> str:
+    """
+    Safely captures the recovery token through the safe test-only email mock
+    when email delivery is configured, or from dev_token in unconfigured development mode.
+    """
+    data = res.json()
+    if data.get("dev_token"):
+        return data["dev_token"]
+    if email and email in test_outbox.tokens_by_email:
+        return test_outbox.tokens_by_email[email]
+    if test_outbox.latest_token:
+        return test_outbox.latest_token
+    return None
 
 
 def test_existing_login_and_registration_still_work(client):
@@ -44,10 +60,12 @@ def test_forgot_password_request_valid_email(client, db_session: Session):
     assert res.status_code == 200
     data = res.json()
     assert "If this email is registered" in data["message"]
-    assert data["dev_token"] is not None
-    assert data["dev_reset_link"] is not None
+    # With email delivery configured, dev_token is never exposed in response; token is dispatched via email
+    assert data["email_sent"] is True
+    assert data["dev_token"] is None
 
-    raw_token = data["dev_token"]
+    raw_token = test_outbox.get_token("athlete1@desifit.in")
+    assert raw_token is not None
     expected_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
     # Verify database persistence & security
@@ -94,7 +112,8 @@ def test_expired_token_rejection(client, db_session: Session):
         "password": "Password123"
     })
     req_res = client.post("/api/v1/auth/forgot-password", json={"email": "expired_test@desifit.in"})
-    raw_token = req_res.json()["dev_token"]
+    raw_token = get_recovery_token(req_res, "expired_test@desifit.in")
+    assert raw_token is not None
 
     token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
     token_rec = db_session.query(PasswordResetToken).filter(PasswordResetToken.token_hash == token_hash).first()
@@ -144,7 +163,8 @@ def test_successful_password_reset_and_login(client, db_session: Session):
 
     # Request recovery
     req_res = client.post("/api/v1/auth/forgot-password", json={"email": "reset_success@desifit.in"})
-    raw_token = req_res.json()["dev_token"]
+    raw_token = get_recovery_token(req_res, "reset_success@desifit.in")
+    assert raw_token is not None
 
     # Verify token
     verify_res = client.get(f"/api/v1/auth/verify-reset-token?token={raw_token}")
@@ -191,7 +211,8 @@ def test_single_use_token_reuse_rejected(client):
         "password": "OriginalPassword123"
     })
     req_res = client.post("/api/v1/auth/forgot-password", json={"email": "reuse_test@desifit.in"})
-    raw_token = req_res.json()["dev_token"]
+    raw_token = get_recovery_token(req_res, "reuse_test@desifit.in")
+    assert raw_token is not None
 
     # First reset succeeds
     reset_1 = client.post("/api/v1/auth/reset-password", json={
@@ -220,7 +241,8 @@ def test_password_hashing_and_complexity(client, db_session: Session):
         "password": "StartPassword123"
     })
     req_res = client.post("/api/v1/auth/forgot-password", json={"email": "complexity@desifit.in"})
-    raw_token = req_res.json()["dev_token"]
+    raw_token = get_recovery_token(req_res, "complexity@desifit.in")
+    assert raw_token is not None
 
     # Test password mismatch
     mismatch_res = client.post("/api/v1/auth/reset-password", json={
@@ -291,11 +313,13 @@ def test_new_reset_request_invalidates_previous_active_tokens(client, db_session
 
     # First request
     res1 = client.post("/api/v1/auth/forgot-password", json={"email": "multi_token@desifit.in"})
-    token1 = res1.json()["dev_token"]
+    token1 = get_recovery_token(res1, "multi_token@desifit.in")
+    assert token1 is not None
 
     # Second request
     res2 = client.post("/api/v1/auth/forgot-password", json={"email": "multi_token@desifit.in"})
-    token2 = res2.json()["dev_token"]
+    token2 = get_recovery_token(res2, "multi_token@desifit.in")
+    assert token2 is not None
 
     assert token1 != token2
 
@@ -361,7 +385,8 @@ def test_multi_user_isolation_and_security(client):
 
     # User A requests reset
     res_a = client.post("/api/v1/auth/forgot-password", json={"email": "user_a@desifit.in"})
-    token_a = res_a.json()["dev_token"]
+    token_a = get_recovery_token(res_a, "user_a@desifit.in")
+    assert token_a is not None
 
     # Reset with User A's token
     client.post("/api/v1/auth/reset-password", json={
@@ -402,7 +427,8 @@ def test_sqlite_persistence_across_sessions(client, db_session: Session):
     })
 
     req_res = client.post("/api/v1/auth/forgot-password", json={"email": "persist_check@desifit.in"})
-    raw_token = req_res.json()["dev_token"]
+    raw_token = get_recovery_token(req_res, "persist_check@desifit.in")
+    assert raw_token is not None
 
     # Expire and refresh session to verify persistence
     db_session.expire_all()
@@ -426,13 +452,23 @@ def test_sqlite_persistence_across_sessions(client, db_session: Session):
 
 
 def test_email_service_behavior(monkeypatch):
-    """Verify email service behavior under configured and unconfigured SMTP settings."""
-    # When SMTP is not configured:
+    """Verify email service behavior under configured and unconfigured Resend and SMTP settings."""
+    # When neither Resend nor SMTP is configured:
     monkeypatch.setenv("SMTP_HOST", "")
+    monkeypatch.setenv("RESEND_API_KEY", "")
     assert is_email_configured() is False
     assert send_password_reset_email("user@example.com", "dummy_token") is False
 
-    # When SMTP is configured:
+    # When Resend is configured:
+    monkeypatch.setenv("RESEND_API_KEY", "re_mock_test_key_12345")
+    monkeypatch.setenv("EMAIL_FROM", "DesiFit <onboarding@resend.dev>")
+    assert is_email_configured() is True
+    with patch("resend.Emails.send", return_value={"id": "resend_msg_123"}):
+        sent = send_password_reset_email("user@example.com", "dummy_token_resend")
+        assert sent is True
+
+    # When SMTP is configured (Resend cleared):
+    monkeypatch.setenv("RESEND_API_KEY", "")
     monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
     monkeypatch.setenv("SMTP_PORT", "587")
     monkeypatch.setenv("SMTP_USERNAME", "mailer@example.com")
@@ -518,7 +554,7 @@ def test_security_case_1_old_password_cannot_authenticate(client):
     # 3. Request password reset
     fp_res = client.post("/api/v1/auth/forgot-password", json={"email": email})
     assert fp_res.status_code == 200
-    token = fp_res.json()["dev_token"]
+    token = get_recovery_token(fp_res, email)
     assert token is not None
 
     # 4. Perform password reset
@@ -560,7 +596,8 @@ def test_security_case_2_new_password_authenticates_successfully(client):
 
     # 2. Request and complete password reset
     fp_res = client.post("/api/v1/auth/forgot-password", json={"email": email})
-    token = fp_res.json()["dev_token"]
+    token = get_recovery_token(fp_res, email)
+    assert token is not None
 
     reset_res = client.post("/api/v1/auth/reset-password", json={
         "token": token,
@@ -605,7 +642,8 @@ def test_security_case_3_token_expiry_via_clock_manipulation(client, db_session:
         "password": original_pass
     })
     fp_res = client.post("/api/v1/auth/forgot-password", json={"email": email})
-    raw_token = fp_res.json()["dev_token"]
+    raw_token = get_recovery_token(fp_res, email)
+    assert raw_token is not None
 
     # 2. Simulate advancing time by 16 minutes (beyond 15-min limit)
     # Using controlled database expiration timestamp simulation:
@@ -659,7 +697,8 @@ def test_security_case_4_token_reuse_rejected(client):
         "password": original_pass
     })
     fp_res = client.post("/api/v1/auth/forgot-password", json={"email": email})
-    token = fp_res.json()["dev_token"]
+    token = get_recovery_token(fp_res, email)
+    assert token is not None
 
     # 2. First password reset (MUST SUCCEED)
     first_reset = client.post("/api/v1/auth/reset-password", json={
@@ -709,7 +748,8 @@ def test_security_case_5_invalid_and_modified_token_rejected(client):
         "password": original_pass
     })
     fp_res = client.post("/api/v1/auth/forgot-password", json={"email": email})
-    valid_token = fp_res.json()["dev_token"]
+    valid_token = get_recovery_token(fp_res, email)
+    assert valid_token is not None
 
     # 1. Test Completely Random Token
     random_token = "X" * 43
@@ -764,7 +804,8 @@ def test_security_case_6_single_use_guarantee_confirmed(client, db_session: Sess
         "password": original_pass
     })
     fp_res = client.post("/api/v1/auth/forgot-password", json={"email": email})
-    token = fp_res.json()["dev_token"]
+    token = get_recovery_token(fp_res, email)
+    assert token is not None
 
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     token_rec = db_session.query(PasswordResetToken).filter(PasswordResetToken.token_hash == token_hash).first()
@@ -806,3 +847,58 @@ def test_security_case_6_single_use_guarantee_confirmed(client, db_session: Sess
     verify_consumed = client.get(f"/api/v1/auth/verify-reset-token?token={token}")
     assert verify_consumed.status_code == 400
     assert "already been used" in verify_consumed.json()["detail"].lower()
+
+
+# ==============================================================================
+# REGRESSION COVERAGE: DEVELOPMENT VS PRODUCTION EMAIL BEHAVIOR
+# ==============================================================================
+
+def test_forgot_password_development_fallback_when_email_unconfigured(client, monkeypatch):
+    """
+    Verify development fallback behavior:
+    When email is genuinely unconfigured in local development (RESEND_API_KEY and SMTP_HOST missing),
+    the endpoint returns dev_token and dev_reset_link to support offline local testing.
+    """
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    monkeypatch.delenv("SMTP_HOST", raising=False)
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+    monkeypatch.delenv("ENV", raising=False)
+    monkeypatch.delenv("RENDER", raising=False)
+
+    client.post("/api/v1/auth/register", json={
+        "email": "dev_fallback@desifit.in",
+        "username": "dev_fallback_user",
+        "full_name": "Dev Fallback User",
+        "password": "Password123"
+    })
+
+    res = client.post("/api/v1/auth/forgot-password", json={"email": "dev_fallback@desifit.in"})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["email_sent"] is False
+    assert data["dev_token"] is not None
+    assert len(data["dev_token"]) >= 32
+    assert "token=" in data["dev_reset_link"]
+
+
+def test_forgot_password_production_email_mode_never_exposes_token(client, monkeypatch):
+    """
+    Verify strict production security:
+    When deployed in production (e.g. RENDER=true), dev_token, dev_reset_link, and dev_note
+    MUST NEVER be returned in API responses.
+    """
+    monkeypatch.setenv("RENDER", "true")
+
+    client.post("/api/v1/auth/register", json={
+        "email": "prod_strict@desifit.in",
+        "username": "prod_strict_user",
+        "full_name": "Prod Strict User",
+        "password": "Password123"
+    })
+
+    res = client.post("/api/v1/auth/forgot-password", json={"email": "prod_strict@desifit.in"})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["dev_token"] is None
+    assert data["dev_reset_link"] is None
+    assert data["dev_note"] is None

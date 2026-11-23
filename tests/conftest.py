@@ -1,4 +1,20 @@
 import os
+import re
+from unittest.mock import patch
+
+# Explicitly isolate test environment from Render production environment variables
+for env_key in [
+    "ENVIRONMENT",
+    "ENV",
+    "RENDER",
+    "RENDER_SERVICE_ID",
+    "RENDER_INSTANCE_ID",
+    "RENDER_EXTERNAL_URL",
+    "RENDER_SERVICE_NAME",
+    "RENDER_SERVICE_TYPE",
+]:
+    os.environ.pop(env_key, None)
+
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 
 import pytest
@@ -21,7 +37,8 @@ from backend.models import (
     AIConversation,
     Exercise,
     FoodItem,
-    PasswordResetToken
+    PasswordResetToken,
+    AccountVerificationToken
 )
 from backend.services.seed_data import seed_database_if_empty
 from backend.security.rate_limiter import reset_rate_limiters
@@ -55,6 +72,7 @@ def cleanup_tables():
         db.query(AIConversation).delete()
         db.query(UserProfile).delete()
         db.query(PasswordResetToken).delete()
+        db.query(AccountVerificationToken).delete()
         db.query(Exercise).filter(Exercise.is_custom == True).delete()
         db.query(FoodItem).filter(FoodItem.is_custom == True).delete()
         db.query(User).delete()
@@ -127,3 +145,71 @@ def auth_headers(client):
     res = client.post("/api/v1/auth/login", json=login_data)
     token = res.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
+
+
+class EmailOutbox:
+    """In-memory test email outbox to capture outbound emails and tokens safely."""
+    def __init__(self):
+        self.emails = []
+        self.tokens_by_email = {}
+        self.latest_token = None
+
+    def clear(self):
+        self.emails.clear()
+        self.tokens_by_email.clear()
+        self.latest_token = None
+
+    def get_token(self, email: str = None) -> str:
+        if email and email in self.tokens_by_email:
+            return self.tokens_by_email[email]
+        return self.latest_token
+
+
+test_outbox = EmailOutbox()
+
+
+def mock_resend_send(params):
+    """Safe test-only mock for resend.Emails.send that records emails and tokens."""
+    to_list = params.get("to", [])
+    to_email = to_list[0] if isinstance(to_list, list) and to_list else str(to_list)
+    text_content = params.get("text", "") + " " + params.get("html", "")
+
+    # Extract token from email content
+    match = re.search(
+        r"(?:Reset Token \(if prompted\):|Verification Token \(if prompted\):|\?token=|\?verify_token=)\s*([A-Za-z0-9_-]+)",
+        text_content
+    )
+    token = match.group(1) if match else None
+
+    test_outbox.emails.append({"to": to_email, "token": token, "params": params})
+    if to_email and token:
+        test_outbox.tokens_by_email[to_email] = token
+    if token:
+        test_outbox.latest_token = token
+
+    return {"id": "mock_resend_msg_test_id"}
+
+
+@pytest.fixture(autouse=True)
+def mock_resend_api(monkeypatch):
+    """
+    Ensures tests NEVER send real emails or depend on a real Resend API key.
+    Mocks resend.Emails.send and captures sent emails and tokens in test_outbox.
+    """
+    test_outbox.clear()
+    for k in (
+        "ENVIRONMENT", "ENV", "RENDER", "RENDER_SERVICE_ID",
+        "RENDER_INSTANCE_ID", "RENDER_EXTERNAL_URL", "RENDER_SERVICE_NAME", "RENDER_SERVICE_TYPE"
+    ):
+        monkeypatch.delenv(k, raising=False)
+
+    monkeypatch.setenv("RESEND_API_KEY", "re_test_mock_api_key_12345")
+    monkeypatch.setenv("EMAIL_FROM", "DesiFit Security <onboarding@resend.dev>")
+    with patch("resend.Emails.send", side_effect=mock_resend_send):
+        yield test_outbox
+    test_outbox.clear()
+
+
+@pytest.fixture
+def email_outbox():
+    return test_outbox
