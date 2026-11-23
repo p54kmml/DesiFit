@@ -1,3 +1,11 @@
+import sys
+from pathlib import Path
+
+# Ensure repository root is in sys.path before any frontend package imports execute
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 import streamlit as st
 from html import escape
 from frontend.api_client import DesiFitAPIClient
@@ -23,6 +31,8 @@ st.set_page_config(
 # Apply global dark / lime SaaS stylesheet
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
+from frontend.navigation import NAV_OPTIONS, PAGE_ALIASES, logout_user
+
 # Initialize Session State
 if "token" not in st.session_state:
     st.session_state["token"] = None
@@ -32,6 +42,13 @@ if "is_onboarded" not in st.session_state:
     st.session_state["is_onboarded"] = False
 if "nav_page" not in st.session_state:
     st.session_state["nav_page"] = "Dashboard"
+
+# Normalize nav_page through aliases to ensure valid route
+raw_nav = st.session_state.get("nav_page", "Dashboard")
+normalized_nav = PAGE_ALIASES.get(raw_nav, raw_nav)
+if normalized_nav not in NAV_OPTIONS:
+    normalized_nav = "Dashboard"
+st.session_state["nav_page"] = normalized_nav
 
 # Initialize API client
 api = DesiFitAPIClient(token=st.session_state.get("token"))
@@ -57,10 +74,7 @@ else:
         col_space, col_exit = st.columns([6, 1])
         with col_exit:
             if st.button("🚪 Cancel / Log Out", use_container_width=True, type="secondary"):
-                st.session_state["token"] = None
-                st.session_state["user"] = None
-                st.session_state["is_onboarded"] = False
-                st.session_state["nav_page"] = "Dashboard"
+                logout_user()
                 st.rerun()
 
         render_onboarding_page(api)
@@ -86,34 +100,26 @@ else:
                 unsafe_allow_html=True
             )
 
-            nav_options = [
-                "Dashboard",
-                "AI Fitness Assistant",
-                "Workout Planner",
-                "Exercise Library",
-                "Nutrition Tracker",
-                "Body Progress",
-                "User Profile"
-            ]
+            def on_nav_change():
+                st.session_state["nav_page"] = st.session_state["nav_radio"]
 
-            # Sync nav_page with selectbox / radio
-            current_idx = nav_options.index(st.session_state["nav_page"]) if st.session_state["nav_page"] in nav_options else 0
-            selected = st.radio(
+            # Synchronize widget state before radio is instantiated if changed programmatically
+            if "nav_radio" not in st.session_state or st.session_state["nav_radio"] != st.session_state.get("nav_page", "Dashboard"):
+                st.session_state["nav_radio"] = st.session_state.get("nav_page", "Dashboard")
+
+            st.radio(
                 "Navigation",
-                options=nav_options,
-                index=current_idx,
+                options=NAV_OPTIONS,
+                key="nav_radio",
+                on_change=on_nav_change,
                 label_visibility="collapsed"
             )
-            st.session_state["nav_page"] = selected
 
             st.markdown("<hr style='border-color: #30363d; margin: 30px 0 20px 0;'>", unsafe_allow_html=True)
 
             # Logout button
             if st.button("🚪 Log Out", use_container_width=True, type="secondary"):
-                st.session_state["token"] = None
-                st.session_state["user"] = None
-                st.session_state["is_onboarded"] = False
-                st.session_state["nav_page"] = "Dashboard"
+                logout_user()
                 st.rerun()
 
             st.markdown(

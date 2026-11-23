@@ -1,0 +1,1 @@
+"""DesiFit frontend views package."""
