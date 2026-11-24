@@ -251,22 +251,19 @@ def render_workouts_page(api: DesiFitAPIClient):
             p_diff = st.selectbox("Difficulty", diff_opts, key="p_diff_input")
             p_desc = st.text_area("Plan Description", key="p_desc_input", placeholder="Comprehensive daily routine focusing on progressive overload and balanced muscle development.", height=70)
 
-            # Header above exercises with current count and top Add button
-            c_hdr, c_top_add = st.columns([1.8, 1.2])
-            with c_hdr:
-                st.markdown(
-                    f"<div style='font-size: 0.95rem; font-weight: 700; color: #a3e635; margin-top: 6px;'>"
-                    f"Plan Exercises ({len(row_ids)}/50)</div>",
-                    unsafe_allow_html=True
-                )
-            with c_top_add:
-                st.button(
-                    "➕ Add Exercise",
-                    key="btn_add_plan_exercise_top",
-                    on_click=add_plan_exercise,
-                    use_container_width=True,
-                    type="secondary"
-                )
+            # Prominent full-width action at the start of the exercise selector.
+            st.markdown(
+                f"<div style='font-size: 0.95rem; font-weight: 700; color: #a3e635; margin-top: 6px;'>"
+                f"Plan Exercises ({len(row_ids)}/50)</div>",
+                unsafe_allow_html=True
+            )
+            st.button(
+                "➕ Add Exercise",
+                key="btn_add_plan_slot",
+                on_click=add_plan_exercise,
+                use_container_width=True,
+                type="primary"
+            )
 
             allow_plan_dups = st.checkbox("Allow duplicate exercises in plan", value=False, key="chk_allow_plan_dups")
 
@@ -320,16 +317,6 @@ def render_workouts_page(api: DesiFitAPIClient):
                         "rest_seconds": rst_val,
                         "order_index": len(plan_exs) + 1
                     })
-
-            # Clearly visible + Add Exercise button below the exercise fields
-            st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
-            st.button(
-                "➕ Add Exercise",
-                key="btn_add_plan_slot",
-                on_click=add_plan_exercise,
-                use_container_width=True,
-                type="secondary"
-            )
 
             st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
             submit_btn_label = "💾 Update Workout Plan" if is_editing else "📋 Create Workout Plan"
