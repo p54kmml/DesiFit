@@ -46,6 +46,49 @@ def remove_plan_exercise(row_id: int):
         st.session_state["workout_active_tab"] = "📋 Workout Planner"
 
 
+def add_log_exercise():
+    """Callback to add a new exercise row to the Workout Log recorder."""
+    if "log_exercise_row_ids" not in st.session_state:
+        init_cnt = st.session_state.get("log_exercise_count", 3)
+        init_cnt = max(1, min(50, init_cnt))
+        st.session_state["log_exercise_row_ids"] = list(range(1, init_cnt + 1))
+        st.session_state["log_next_row_id"] = init_cnt + 1
+
+    row_ids = st.session_state["log_exercise_row_ids"]
+    if len(row_ids) < 50:
+        new_id = st.session_state.get("log_next_row_id", max(row_ids, default=0) + 1)
+        st.session_state["log_next_row_id"] = new_id + 1
+        st.session_state["log_exercise_row_ids"].append(new_id)
+        st.session_state["log_exercise_count"] = len(st.session_state["log_exercise_row_ids"])
+        st.session_state[f"log_ex_{new_id}"] = "None"
+        st.session_state[f"log_s_{new_id}"] = 3
+        st.session_state[f"log_r_{new_id}"] = 10
+        st.session_state[f"log_w_{new_id}"] = 20.0
+        st.session_state["workout_active_tab"] = "📝 Record Completed Workout"
+
+
+def remove_log_exercise(row_id: int):
+    """Callback to remove a specific exercise row from the Workout Log recorder."""
+    if "log_exercise_row_ids" not in st.session_state:
+        init_cnt = st.session_state.get("log_exercise_count", 3)
+        init_cnt = max(1, min(50, init_cnt))
+        st.session_state["log_exercise_row_ids"] = list(range(1, init_cnt + 1))
+        st.session_state["log_next_row_id"] = init_cnt + 1
+
+    row_ids = st.session_state["log_exercise_row_ids"]
+    if len(row_ids) > 1 and row_id in row_ids:
+        row_ids.remove(row_id)
+        st.session_state.pop(f"log_ex_{row_id}", None)
+        st.session_state.pop(f"log_s_{row_id}", None)
+        st.session_state.pop(f"log_r_{row_id}", None)
+        st.session_state.pop(f"log_w_{row_id}", None)
+        st.session_state["log_exercise_count"] = len(row_ids)
+        st.session_state["workout_active_tab"] = "📝 Record Completed Workout"
+    elif len(row_ids) == 1 and row_id in row_ids:
+        st.session_state[f"log_ex_{row_id}"] = "None"
+        st.session_state["workout_active_tab"] = "📝 Record Completed Workout"
+
+
 def render_workouts_page(api: DesiFitAPIClient):
     st.markdown(
         """
@@ -354,130 +397,162 @@ def render_workouts_page(api: DesiFitAPIClient):
     with tab_log:
         st.markdown("<h3 style='color: #ffffff; margin-top: 0;'>Record a Completed Workout</h3>", unsafe_allow_html=True)
 
-        # Dynamic, user-defined exercise count for workout logging (1-50 exercises)
-        if "log_exercise_count" not in st.session_state:
-            st.session_state["log_exercise_count"] = 4
+        # Dynamic, user-defined exercise rows using stable row IDs (1-50 exercises)
+        if "log_exercise_row_ids" not in st.session_state:
+            init_cnt = st.session_state.get("log_exercise_count", 3)
+            init_cnt = max(1, min(50, init_cnt))
+            st.session_state["log_exercise_row_ids"] = list(range(1, init_cnt + 1))
+            st.session_state["log_next_row_id"] = init_cnt + 1
+        else:
+            if not st.session_state["log_exercise_row_ids"]:
+                st.session_state["log_exercise_row_ids"] = [1]
+                st.session_state["log_next_row_id"] = 2
 
-        log_count = max(1, min(50, st.session_state["log_exercise_count"]))
-        st.session_state["log_exercise_count"] = log_count
+        log_row_ids = st.session_state["log_exercise_row_ids"]
+        st.session_state["log_exercise_count"] = len(log_row_ids)
 
-        # Controls to add/remove exercise slots
-        c_cnt1, c_cnt2, c_cnt3 = st.columns([2.5, 1, 1])
-        with c_cnt1:
-            st.markdown(
-                f"<div style='font-size: 0.88rem; color: #8b949e; margin-top: 6px;'>Currently configuring <b>{log_count}</b> exercise slot(s) (1–50). Add or remove slots to match your training session.</div>",
-                unsafe_allow_html=True
-            )
-        with c_cnt2:
-            if st.button("➕ Add Exercise Slot", key="btn_add_log_slot", use_container_width=True):
-                if log_count < 50:
-                    st.session_state["log_exercise_count"] = log_count + 1
-                    st.session_state["workout_active_tab"] = "📝 Record Completed Workout"
-                    st.rerun()
+        if "log_title_input" not in st.session_state:
+            st.session_state["log_title_input"] = "Full Training Session"
+        if "log_duration_input" not in st.session_state:
+            st.session_state["log_duration_input"] = 60
+        if "log_date_input" not in st.session_state:
+            st.session_state["log_date_input"] = date.today()
+        if "log_notes_input" not in st.session_state:
+            st.session_state["log_notes_input"] = ""
+
+        w_col1, w_col2, w_col3 = st.columns([2, 1, 1])
+        with w_col1:
+            title = st.text_input("Workout Title / Focus", key="log_title_input", placeholder="e.g. Chest & Triceps Blast")
+        with w_col2:
+            duration = st.number_input("Duration (minutes)", min_value=5, max_value=240, step=5, key="log_duration_input")
+        with w_col3:
+            w_date = st.date_input("Date of Workout", key="log_date_input")
+
+        notes = st.text_area("Session Notes (optional)", key="log_notes_input", placeholder="Felt energized, great pump, progressive overload achieved!", height=70)
+
+        st.markdown(
+            f"<div style='font-size: 1.05rem; font-weight: 700; color: #a3e635; margin: 15px 0 6px 0;'>"
+            f"Exercises Performed ({len(log_row_ids)}/50)</div>",
+            unsafe_allow_html=True
+        )
+        allow_log_duplicates = st.checkbox(
+            "Allow duplicate exercises (e.g. multiple distinct set protocols or supersets)",
+            value=False,
+            key="chk_allow_log_dups"
+        )
+
+        logged_items = []
+        for display_idx, r_id in enumerate(log_row_ids, start=1):
+            st.markdown(f"<div style='font-size: 0.85rem; font-weight: 700; color: #8b949e; margin-top: 10px; margin-bottom: 2px;'>Exercise #{display_idx}</div>", unsafe_allow_html=True)
+            e_col_drop, e_col_del = st.columns([4.2, 1.0])
+
+            if f"log_ex_{r_id}" not in st.session_state:
+                def_idx = display_idx if display_idx < len(options_list) else 0
+                st.session_state[f"log_ex_{r_id}"] = options_list[def_idx]
+
+            with e_col_drop:
+                sel_name = st.selectbox(
+                    f"Select Exercise #{display_idx}",
+                    options=options_list,
+                    key=f"log_ex_{r_id}",
+                    label_visibility="collapsed"
+                )
+            with e_col_del:
+                st.button(
+                    "🗑️",
+                    key=f"btn_del_log_{r_id}",
+                    on_click=remove_log_exercise,
+                    args=(r_id,),
+                    use_container_width=True,
+                    help=f"Remove exercise #{display_idx}"
+                )
+
+            e_s, e_r, e_w = st.columns(3)
+            with e_s:
+                if f"log_s_{r_id}" not in st.session_state:
+                    st.session_state[f"log_s_{r_id}"] = 3
+                sets = st.number_input(f"Sets #{display_idx}", min_value=1, max_value=20, key=f"log_s_{r_id}")
+            with e_r:
+                if f"log_r_{r_id}" not in st.session_state:
+                    st.session_state[f"log_r_{r_id}"] = 10
+                reps = st.number_input(f"Reps #{display_idx}", min_value=1, max_value=100, key=f"log_r_{r_id}")
+            with e_w:
+                if f"log_w_{r_id}" not in st.session_state:
+                    st.session_state[f"log_w_{r_id}"] = float(15.0 + (display_idx * 2.5))
+                wt = st.number_input(f"Weight (kg) #{display_idx}", min_value=0.0, max_value=500.0, step=2.5, key=f"log_w_{r_id}")
+
+            if sel_name != "None" and sel_name in exercise_options:
+                logged_items.append({
+                    "exercise_id": exercise_options[sel_name],
+                    "exercise_name": sel_name,
+                    "sets_completed": sets,
+                    "reps_completed": reps,
+                    "weight_kg": wt,
+                    "notes": ""
+                })
+
+        # Clearly visible + Add Exercise button below the exercise fields
+        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+        st.button(
+            "➕ Add Exercise",
+            key="btn_add_log_slot",
+            on_click=add_log_exercise,
+            use_container_width=True,
+            type="secondary"
+        )
+
+        st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
+        if st.button("Save Completed Workout ✅", key="btn_save_workout_log", type="primary", use_container_width=True):
+            clean_title = (title or "").strip()
+            if not clean_title:
+                st.error("Please enter a workout title.")
+            elif not logged_items:
+                st.error("Please select at least one exercise (change slot dropdown from 'None').")
+            else:
+                chosen_ids = [it["exercise_id"] for it in logged_items]
+                if len(chosen_ids) != len(set(chosen_ids)) and not allow_log_duplicates:
+                    seen = set()
+                    dups = {it["exercise_name"] for it in logged_items if it["exercise_id"] in seen or seen.add(it["exercise_id"])}
+                    dup_str = ", ".join(dups)
+                    st.error(f"Duplicate exercises detected ({dup_str}). Please select unique exercises or check 'Allow duplicate exercises'.")
                 else:
-                    st.warning("Maximum of 50 exercises per workout log reached.")
-        with c_cnt3:
-            if st.button("🗑️ Remove Last Slot", key="btn_rem_log_slot", use_container_width=True):
-                if log_count > 1:
-                    st.session_state["log_exercise_count"] = log_count - 1
-                    st.session_state["workout_active_tab"] = "📝 Record Completed Workout"
-                    st.rerun()
-
-        with st.form("log_workout_form"):
-            w_col1, w_col2, w_col3 = st.columns([2, 1, 1])
-            with w_col1:
-                title = st.text_input("Workout Title / Focus", value="Full Training Session", placeholder="e.g. Chest & Triceps Blast")
-            with w_col2:
-                duration = st.number_input("Duration (minutes)", min_value=5, max_value=240, value=60, step=5)
-            with w_col3:
-                w_date = st.date_input("Date of Workout", value=date.today())
-
-            notes = st.text_area("Session Notes (optional)", placeholder="Felt energized, great pump, progressive overload achieved!", height=70)
-
-            st.markdown("<h4 style='color: #a3e635; margin: 15px 0 10px 0;'>Exercises Performed</h4>", unsafe_allow_html=True)
-            allow_log_duplicates = st.checkbox(
-                "Allow duplicate exercises (e.g. multiple distinct set protocols or supersets)",
-                value=False,
-                key="chk_allow_log_dups"
-            )
-
-            logged_items = []
-            for i in range(1, log_count + 1):
-                st.markdown(f"<div style='font-size: 0.85rem; font-weight: 700; color: #8b949e;'>Exercise #{i}</div>", unsafe_allow_html=True)
-                e_col1, e_col2, e_col3, e_col4 = st.columns([3, 1, 1, 1])
-
-                with e_col1:
-                    if f"ex_sel_{i}" in st.session_state:
-                        sel_name = st.selectbox(
-                            f"Select Exercise #{i}",
-                            options=options_list,
-                            key=f"ex_sel_{i}",
-                            label_visibility="collapsed"
-                        )
-                    else:
-                        default_idx = i if i < len(options_list) else 0
-                        sel_name = st.selectbox(
-                            f"Select Exercise #{i}",
-                            options=options_list,
-                            index=default_idx,
-                            key=f"ex_sel_{i}",
-                            label_visibility="collapsed"
-                        )
-                with e_col2:
-                    sets = st.number_input(f"Sets #{i}", min_value=1, max_value=20, value=3, key=f"sets_{i}")
-                with e_col3:
-                    reps = st.number_input(f"Reps #{i}", min_value=1, max_value=100, value=10, key=f"reps_{i}")
-                with e_col4:
-                    wt = st.number_input(f"Weight (kg) #{i}", min_value=0.0, max_value=500.0, value=float(15.0 + (i * 2.5)), step=2.5, key=f"wt_{i}")
-
-                if sel_name != "None":
-                    logged_items.append({
-                        "exercise_id": exercise_options[sel_name],
-                        "exercise_name": sel_name,
-                        "sets_completed": sets,
-                        "reps_completed": reps,
-                        "weight_kg": wt,
-                        "notes": ""
-                    })
-
-            log_btn = st.form_submit_button("Save Completed Workout ✅", use_container_width=True)
-
-            if log_btn:
-                if not title.strip():
-                    st.error("Please enter a workout title.")
-                elif not logged_items:
-                    st.error("Please select at least one exercise.")
-                else:
-                    chosen_ids = [it["exercise_id"] for it in logged_items]
-                    if len(chosen_ids) != len(set(chosen_ids)) and not allow_log_duplicates:
-                        seen = set()
-                        dups = {it["exercise_name"] for it in logged_items if it["exercise_id"] in seen or seen.add(it["exercise_id"])}
-                        dup_str = ", ".join(dups)
-                        st.error(f"Duplicate exercises detected ({dup_str}). Please select unique exercises or check 'Allow duplicate exercises'.")
-                    else:
-                        try:
-                            clean_items = [
-                                {
-                                    "exercise_id": it["exercise_id"],
-                                    "sets_completed": it["sets_completed"],
-                                    "reps_completed": it["reps_completed"],
-                                    "weight_kg": it["weight_kg"],
-                                    "notes": it["notes"]
-                                }
-                                for it in logged_items
-                            ]
-                            api.record_workout_log({
-                                "title": title.strip(),
-                                "notes": notes,
-                                "duration_minutes": duration,
-                                "date": str(w_date),
-                                "completed": True,
-                                "logged_exercises": clean_items
-                            })
-                            st.success(f"Workout recorded successfully with {len(clean_items)} exercises! Great effort! 🚀")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Failed to record workout: {str(e)}")
+                    try:
+                        clean_items = [
+                            {
+                                "exercise_id": it["exercise_id"],
+                                "sets_completed": it["sets_completed"],
+                                "reps_completed": it["reps_completed"],
+                                "weight_kg": it["weight_kg"],
+                                "notes": it["notes"]
+                            }
+                            for it in logged_items
+                        ]
+                        api.record_workout_log({
+                            "title": clean_title,
+                            "notes": notes,
+                            "duration_minutes": duration,
+                            "date": str(w_date),
+                            "completed": True,
+                            "logged_exercises": clean_items
+                        })
+                        st.success(f"Workout recorded successfully with {len(clean_items)} exercises! Great effort! 🚀")
+                        # Reset inputs
+                        st.session_state["log_title_input"] = "Full Training Session"
+                        st.session_state["log_duration_input"] = 60
+                        st.session_state["log_date_input"] = date.today()
+                        st.session_state["log_notes_input"] = ""
+                        st.session_state["log_exercise_row_ids"] = [1, 2, 3]
+                        st.session_state["log_next_row_id"] = 4
+                        st.session_state["log_exercise_count"] = 3
+                        for k in range(1, 100):
+                            st.session_state.pop(f"log_ex_{k}", None)
+                            st.session_state.pop(f"log_s_{k}", None)
+                            st.session_state.pop(f"log_r_{k}", None)
+                            st.session_state.pop(f"log_w_{k}", None)
+                        st.session_state["workout_active_tab"] = "📝 Record Completed Workout"
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed to record workout: {str(e)}")
 
     # ==========================================
     # TAB 3: WORKOUT HISTORY & LOGS
