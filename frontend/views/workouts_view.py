@@ -3,6 +3,49 @@ from datetime import date
 from frontend.api_client import DesiFitAPIClient
 
 
+def add_plan_exercise():
+    """Callback to add a new exercise row to the Workout Plan builder."""
+    if "plan_exercise_row_ids" not in st.session_state:
+        init_cnt = st.session_state.get("plan_exercise_count", 3)
+        init_cnt = max(1, min(50, init_cnt))
+        st.session_state["plan_exercise_row_ids"] = list(range(1, init_cnt + 1))
+        st.session_state["plan_next_row_id"] = init_cnt + 1
+
+    row_ids = st.session_state["plan_exercise_row_ids"]
+    if len(row_ids) < 50:
+        new_id = st.session_state.get("plan_next_row_id", max(row_ids, default=0) + 1)
+        st.session_state["plan_next_row_id"] = new_id + 1
+        st.session_state["plan_exercise_row_ids"].append(new_id)
+        st.session_state["plan_exercise_count"] = len(st.session_state["plan_exercise_row_ids"])
+        st.session_state[f"p_ex_{new_id}"] = "None"
+        st.session_state[f"p_s_{new_id}"] = 3
+        st.session_state[f"p_r_{new_id}"] = 12
+        st.session_state[f"p_rst_{new_id}"] = 60
+        st.session_state["workout_active_tab"] = "📋 Workout Planner"
+
+
+def remove_plan_exercise(row_id: int):
+    """Callback to remove a specific exercise row from the Workout Plan builder."""
+    if "plan_exercise_row_ids" not in st.session_state:
+        init_cnt = st.session_state.get("plan_exercise_count", 3)
+        init_cnt = max(1, min(50, init_cnt))
+        st.session_state["plan_exercise_row_ids"] = list(range(1, init_cnt + 1))
+        st.session_state["plan_next_row_id"] = init_cnt + 1
+
+    row_ids = st.session_state["plan_exercise_row_ids"]
+    if len(row_ids) > 1 and row_id in row_ids:
+        row_ids.remove(row_id)
+        st.session_state.pop(f"p_ex_{row_id}", None)
+        st.session_state.pop(f"p_s_{row_id}", None)
+        st.session_state.pop(f"p_r_{row_id}", None)
+        st.session_state.pop(f"p_rst_{row_id}", None)
+        st.session_state["plan_exercise_count"] = len(row_ids)
+        st.session_state["workout_active_tab"] = "📋 Workout Planner"
+    elif len(row_ids) == 1 and row_id in row_ids:
+        st.session_state[f"p_ex_{row_id}"] = "None"
+        st.session_state["workout_active_tab"] = "📋 Workout Planner"
+
+
 def render_workouts_page(api: DesiFitAPIClient):
     st.markdown(
         """
@@ -86,7 +129,10 @@ def render_workouts_page(api: DesiFitAPIClient):
                                 st.session_state["p_goal_input"] = plan.get("goal", "Muscle Gain")
                                 st.session_state["p_diff_input"] = plan.get("difficulty", "Intermediate")
                                 st.session_state["p_desc_input"] = plan.get("description", "") or ""
-                                st.session_state["plan_exercise_count"] = max(1, min(50, len(plan_exercises)))
+                                n_ex = max(1, min(50, len(plan_exercises)))
+                                st.session_state["plan_exercise_row_ids"] = list(range(1, n_ex + 1))
+                                st.session_state["plan_next_row_id"] = n_ex + 1
+                                st.session_state["plan_exercise_count"] = n_ex
                                 # Pre-populate builder fields
                                 for idx, p_item in enumerate(plan_exercises, start=1):
                                     e_inf = p_item.get("exercise", {})
@@ -117,8 +163,10 @@ def render_workouts_page(api: DesiFitAPIClient):
                     st.session_state.pop("editing_plan_id", None)
                     st.session_state.pop("p_title_input", None)
                     st.session_state.pop("p_desc_input", None)
-                    st.session_state["plan_exercise_count"] = 4
-                    for k in range(1, 51):
+                    st.session_state["plan_exercise_row_ids"] = [1, 2, 3]
+                    st.session_state["plan_next_row_id"] = 4
+                    st.session_state["plan_exercise_count"] = 3
+                    for k in range(1, 100):
                         st.session_state.pop(f"p_ex_{k}", None)
                         st.session_state.pop(f"p_s_{k}", None)
                         st.session_state.pop(f"p_r_{k}", None)
@@ -128,11 +176,19 @@ def render_workouts_page(api: DesiFitAPIClient):
             else:
                 st.markdown("<h3 style='color: #ffffff; margin-top: 0;'>Create New Workout Plan</h3>", unsafe_allow_html=True)
 
-            # Slot count for plan builder (flexible user-defined count, 1-50)
-            if "plan_exercise_count" not in st.session_state:
-                st.session_state["plan_exercise_count"] = 4
-            plan_slot_count = max(1, min(50, st.session_state["plan_exercise_count"]))
-            st.session_state["plan_exercise_count"] = plan_slot_count
+            # Manage dynamic exercise rows using stable row IDs
+            if "plan_exercise_row_ids" not in st.session_state:
+                init_cnt = st.session_state.get("plan_exercise_count", 3)
+                init_cnt = max(1, min(50, init_cnt))
+                st.session_state["plan_exercise_row_ids"] = list(range(1, init_cnt + 1))
+                st.session_state["plan_next_row_id"] = init_cnt + 1
+            else:
+                if not st.session_state["plan_exercise_row_ids"]:
+                    st.session_state["plan_exercise_row_ids"] = [1]
+                    st.session_state["plan_next_row_id"] = 2
+
+            row_ids = st.session_state["plan_exercise_row_ids"]
+            st.session_state["plan_exercise_count"] = len(row_ids)
 
             goal_opts = ["Muscle Gain", "Fat Loss", "Strength", "Endurance", "General Fitness"]
             diff_opts = ["Beginner", "Intermediate", "Advanced"]
@@ -152,63 +208,65 @@ def render_workouts_page(api: DesiFitAPIClient):
             p_diff = st.selectbox("Difficulty", diff_opts, key="p_diff_input")
             p_desc = st.text_area("Plan Description", key="p_desc_input", placeholder="Comprehensive daily routine focusing on progressive overload and balanced muscle development.", height=70)
 
-            # Prominent exercise count control header right above the exercise list
-            c_hdr, c_btn_top1, c_btn_top2 = st.columns([1.8, 1.1, 1.1])
+            # Header above exercises with current count and top Add button
+            c_hdr, c_top_add = st.columns([1.8, 1.2])
             with c_hdr:
                 st.markdown(
                     f"<div style='font-size: 0.95rem; font-weight: 700; color: #a3e635; margin-top: 6px;'>"
-                    f"Plan Exercises ({plan_slot_count}/50)</div>",
+                    f"Plan Exercises ({len(row_ids)}/50)</div>",
                     unsafe_allow_html=True
                 )
-            with c_btn_top1:
-                if st.button("➕ Add Exercise", key="btn_add_plan_exercise_top", use_container_width=True, type="secondary"):
-                    if plan_slot_count < 50:
-                        st.session_state["plan_exercise_count"] = plan_slot_count + 1
-                        st.session_state["workout_active_tab"] = "📋 Workout Planner"
-                        st.rerun()
-                    else:
-                        st.warning("Maximum of 50 exercises per workout plan reached.")
-            with c_btn_top2:
-                if st.button("🗑️ Remove Exercise", key="btn_rem_plan_exercise_top", use_container_width=True, type="secondary"):
-                    if plan_slot_count > 1:
-                        st.session_state["plan_exercise_count"] = plan_slot_count - 1
-                        st.session_state.pop(f"p_ex_{plan_slot_count}", None)
-                        st.session_state.pop(f"p_s_{plan_slot_count}", None)
-                        st.session_state.pop(f"p_r_{plan_slot_count}", None)
-                        st.session_state.pop(f"p_rst_{plan_slot_count}", None)
-                        st.session_state["workout_active_tab"] = "📋 Workout Planner"
-                        st.rerun()
+            with c_top_add:
+                st.button(
+                    "➕ Add Exercise",
+                    key="btn_add_plan_exercise_top",
+                    on_click=add_plan_exercise,
+                    use_container_width=True,
+                    type="secondary"
+                )
 
             allow_plan_dups = st.checkbox("Allow duplicate exercises in plan", value=False, key="chk_allow_plan_dups")
 
+            # Render dynamic exercise rows
             plan_exs = []
-            for idx in range(1, plan_slot_count + 1):
-                st.markdown(f"<div style='font-size: 0.82rem; font-weight: 700; color: #8b949e; margin-top: 8px;'>Exercise Slot #{idx}</div>", unsafe_allow_html=True)
+            for display_idx, r_id in enumerate(row_ids, start=1):
+                st.markdown(f"<div style='font-size: 0.85rem; font-weight: 700; color: #8b949e; margin-top: 12px; margin-bottom: 2px;'>Exercise #{display_idx}</div>", unsafe_allow_html=True)
 
-                if f"p_ex_{idx}" not in st.session_state:
-                    def_opt_idx = idx if idx < len(options_list) else 0
-                    st.session_state[f"p_ex_{idx}"] = options_list[def_opt_idx]
+                if f"p_ex_{r_id}" not in st.session_state:
+                    def_opt_idx = display_idx if display_idx < len(options_list) else 0
+                    st.session_state[f"p_ex_{r_id}"] = options_list[def_opt_idx]
 
-                sel_p_ex = st.selectbox(
-                    f"Exercise #{idx}",
-                    options_list,
-                    key=f"p_ex_{idx}",
-                    label_visibility="collapsed"
-                )
+                r_col_drop, r_col_del = st.columns([4.2, 1.0])
+                with r_col_drop:
+                    sel_p_ex = st.selectbox(
+                        f"Select Exercise #{display_idx}",
+                        options=options_list,
+                        key=f"p_ex_{r_id}",
+                        label_visibility="collapsed"
+                    )
+                with r_col_del:
+                    st.button(
+                        "🗑️",
+                        key=f"btn_del_row_{r_id}",
+                        on_click=remove_plan_exercise,
+                        args=(r_id,),
+                        use_container_width=True,
+                        help=f"Remove exercise #{display_idx}"
+                    )
 
                 c_s, c_r, c_rest = st.columns(3)
                 with c_s:
-                    if f"p_s_{idx}" not in st.session_state:
-                        st.session_state[f"p_s_{idx}"] = 3
-                    s_val = st.number_input(f"Sets #{idx}", min_value=1, max_value=10, key=f"p_s_{idx}")
+                    if f"p_s_{r_id}" not in st.session_state:
+                        st.session_state[f"p_s_{r_id}"] = 3
+                    s_val = st.number_input(f"Sets #{display_idx}", min_value=1, max_value=20, key=f"p_s_{r_id}")
                 with c_r:
-                    if f"p_r_{idx}" not in st.session_state:
-                        st.session_state[f"p_r_{idx}"] = 12
-                    r_val = st.number_input(f"Reps #{idx}", min_value=1, max_value=50, key=f"p_r_{idx}")
+                    if f"p_r_{r_id}" not in st.session_state:
+                        st.session_state[f"p_r_{r_id}"] = 12
+                    r_val = st.number_input(f"Reps #{display_idx}", min_value=1, max_value=100, key=f"p_r_{r_id}")
                 with c_rest:
-                    if f"p_rst_{idx}" not in st.session_state:
-                        st.session_state[f"p_rst_{idx}"] = 60
-                    rst_val = st.number_input(f"Rest (s) #{idx}", min_value=15, max_value=300, step=15, key=f"p_rst_{idx}")
+                    if f"p_rst_{r_id}" not in st.session_state:
+                        st.session_state[f"p_rst_{r_id}"] = 60
+                    rst_val = st.number_input(f"Rest (s) #{display_idx}", min_value=15, max_value=600, step=15, key=f"p_rst_{r_id}")
 
                 if sel_p_ex != "None" and sel_p_ex in exercise_options:
                     plan_exs.append({
@@ -220,30 +278,18 @@ def render_workouts_page(api: DesiFitAPIClient):
                         "order_index": len(plan_exs) + 1
                     })
 
-            # Add / Remove slot controls directly alongside exercises
-            st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
-            cp_cnt1, cp_cnt2 = st.columns([1, 1])
-            with cp_cnt1:
-                if st.button("➕ Add Exercise", key="btn_add_plan_slot", use_container_width=True):
-                    if plan_slot_count < 50:
-                        st.session_state["plan_exercise_count"] = plan_slot_count + 1
-                        st.session_state["workout_active_tab"] = "📋 Workout Planner"
-                        st.rerun()
-                    else:
-                        st.warning("Maximum of 50 exercises per workout plan reached.")
-            with cp_cnt2:
-                if st.button("🗑️ Remove Last Exercise", key="btn_rem_plan_slot", use_container_width=True):
-                    if plan_slot_count > 1:
-                        st.session_state["plan_exercise_count"] = plan_slot_count - 1
-                        st.session_state.pop(f"p_ex_{plan_slot_count}", None)
-                        st.session_state.pop(f"p_s_{plan_slot_count}", None)
-                        st.session_state.pop(f"p_r_{plan_slot_count}", None)
-                        st.session_state.pop(f"p_rst_{plan_slot_count}", None)
-                        st.session_state["workout_active_tab"] = "📋 Workout Planner"
-                        st.rerun()
+            # Clearly visible + Add Exercise button below the exercise fields
+            st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+            st.button(
+                "➕ Add Exercise",
+                key="btn_add_plan_slot",
+                on_click=add_plan_exercise,
+                use_container_width=True,
+                type="secondary"
+            )
 
             st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
-            submit_btn_label = "💾 Update Workout Plan" if is_editing else "📋 Save Workout Plan"
+            submit_btn_label = "💾 Update Workout Plan" if is_editing else "📋 Create Workout Plan"
             if st.button(submit_btn_label, key="btn_save_workout_plan", type="primary", use_container_width=True):
                 p_title_clean = st.session_state.get("p_title_input", "").strip()
                 if not p_title_clean:
@@ -289,8 +335,10 @@ def render_workouts_page(api: DesiFitAPIClient):
                             # Reset builder inputs
                             st.session_state["p_title_input"] = ""
                             st.session_state["p_desc_input"] = ""
-                            st.session_state["plan_exercise_count"] = 4
-                            for k in range(1, 51):
+                            st.session_state["plan_exercise_row_ids"] = [1, 2, 3]
+                            st.session_state["plan_next_row_id"] = 4
+                            st.session_state["plan_exercise_count"] = 3
+                            for k in range(1, 100):
                                 st.session_state.pop(f"p_ex_{k}", None)
                                 st.session_state.pop(f"p_s_{k}", None)
                                 st.session_state.pop(f"p_r_{k}", None)
