@@ -40,7 +40,7 @@ class DesiFitAPIClient:
             "username": username,
             "full_name": full_name,
             "password": password
-        }, headers=self._headers(), timeout=10)
+        }, headers=self._headers(), timeout=90)
         return self._handle_response(res)
 
     def login(self, username: str, password: str) -> Dict[str, Any]:
