@@ -48,7 +48,7 @@ class DesiFitAPIClient:
         res = requests.post(url, json={
             "username": username,
             "password": password
-        }, headers=self._headers(), timeout=10)
+        }, headers=self._headers(), timeout=90)
         data = self._handle_response(res)
         self.token = data.get("access_token")
         return data
@@ -60,7 +60,7 @@ class DesiFitAPIClient:
 
     def forgot_password(self, email: str) -> Dict[str, Any]:
         url = f"{API_PREFIX}/auth/forgot-password"
-        res = requests.post(url, json={"email": email}, headers=self._headers(), timeout=10)
+        res = requests.post(url, json={"email": email}, headers=self._headers(), timeout=90)
         return self._handle_response(res)
 
     def verify_reset_token(self, token: str) -> Dict[str, Any]:
